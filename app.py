@@ -128,13 +128,36 @@ else:
     # Tampilan khusus jika service_filter dipilih, misalnya hanya "Issue"
     st.subheader(f"📌 Daftar Semua Tags untuk Service: {service_filter}")
     st.markdown(f"**Total Tiket untuk Service `{service_filter}`:** {len(filtered_df)} tiket")
+    # Pilihan Mode Analisis
+    mode_filter = st.radio("Mode Tampilan:", ["📊 Semua Company", "🏢 Spesifik Company"], horizontal=True)
+
+    # Jika pilih company spesifik, tampilkan pilihan company
+    if mode_filter == "🏢 Spesifik Company":
+        company_list = sorted(filtered_df["Company"].dropna().unique())
+        
+        if "selected_specific_company" not in st.session_state:
+            st.session_state.selected_specific_company = company_list[0] if company_list else None
+
+        if st.session_state.selected_specific_company not in company_list:
+            st.session_state.selected_specific_company = company_list[0] if company_list else None
+
+        selected_company = st.selectbox(
+            "Pilih Company:",
+            options=company_list,
+            index=company_list.index(st.session_state.selected_specific_company) if st.session_state.selected_specific_company in company_list else 0,
+            key="selected_specific_company"
+        )
+
+        tag_data = filtered_df[filtered_df["Company"] == selected_company]
+    else:
+        tag_data = filtered_df.copy()
+
     tag_limit_option = st.selectbox(
     "Tampilkan jumlah tag:",
     options=["All Tags", "Top 5", "Top 10", "Top 20"])
 
-    tag_counts = filtered_df["Tags"].value_counts()
     if "Tags" in filtered_df.columns and filtered_df["Tags"].notna().sum() > 0:
-        tag_counts = filtered_df["Tags"].value_counts()
+        tag_counts = tag_data["Tags"].value_counts()
         if not tag_counts.empty:
             cols = st.columns(4)
             if tag_limit_option == "Top 5":
@@ -156,7 +179,38 @@ else:
 
     st.markdown("---")
     st.subheader(f"🧾 Tabel Detail Tiket untuk Service: {service_filter}")
-    st.dataframe(filtered_df.sort_values(by="Tags", ascending=True))
+    st.markdown("### 🎯 Filter Detail Berdasarkan Tags & Company")
+
+    filter_mode = st.selectbox(
+        "Pilih jenis filter detail:",
+        ["Tampilkan Semua", "Filter berdasarkan Tag", "Filter berdasarkan Company", "Filter berdasarkan Keduanya"])
+
+    detail_df = filtered_df.copy()
+
+    if filter_mode == "Filter berdasarkan Tag":
+        available_tags = sorted(filtered_df["Tags"].dropna().unique())
+        selected_tag = st.selectbox("Pilih Tag:", options=available_tags)
+        detail_df = detail_df[detail_df["Tags"] == selected_tag]
+
+    elif filter_mode == "Filter berdasarkan Company":
+        available_companies = sorted(filtered_df["Company"].dropna().unique())
+        selected_company = st.selectbox("Pilih Company:", options=available_companies)
+        detail_df = detail_df[detail_df["Company"] == selected_company]
+
+    elif filter_mode == "Filter berdasarkan Keduanya":
+        available_tags = sorted(filtered_df["Tags"].dropna().unique())
+        available_companies = sorted(filtered_df["Company"].dropna().unique())
+
+        selected_tag = st.selectbox("Pilih Tag:", options=available_tags)
+        selected_company = st.selectbox("Pilih Company:", options=available_companies)
+
+        detail_df = detail_df[
+            (detail_df["Tags"] == selected_tag) &
+            (detail_df["Company"] == selected_company)]
+
+    # Jika Tampilkan Semua, biarkan detail_df tanpa filter tambahan
+
+    st.dataframe(detail_df.sort_values(by="Tags", ascending=True))
 
 # ==================================
 # 📊 Tampilan Grafik Interaktif (khusus Services = All)
