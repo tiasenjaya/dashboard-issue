@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -35,7 +34,7 @@ with st.sidebar:
     service_filter = st.selectbox("📄 Pilih Services", options=service_options)
 
     # Mode filter
-    filter_type = st.radio("🎯 Mode Filter Tanggal", ["Per Hari", "Per Bulan"], horizontal=True)
+    filter_type = st.radio("🎯 Mode Filter Tanggal", ["Per Hari", "Per Bulan", "Per Tahun"], horizontal=True)
 
     if filter_type == "Per Hari":
         min_date = df["Created Date"].min().date()
@@ -46,7 +45,7 @@ with st.sidebar:
             min_value=min_date,
             max_value=max_date
         )
-    else:  # Per Bulan
+    elif filter_type == "Per Bulan":  # Per Bulan
         tahun_opsi = sorted(df["Created Date"].dt.year.unique())
         selected_year = st.selectbox("📅 Pilih Tahun", options=tahun_opsi)
 
@@ -60,24 +59,68 @@ with st.sidebar:
 
         selected_month = st.selectbox("📅 Pilih Bulan", options=bulan_tersedia, format_func=lambda x: bulan_opsi[x])
 
-# ==================================
-# 📊 Filter data
-# ==================================
+    elif filter_type == "Per Tahun":
+        tahun_opsi = sorted(df["Created Date"].dt.year.unique())
+        selected_year = st.selectbox("📅 Pilih Tahun", options=tahun_opsi)
+
+        bulan_opsi = {
+            1: "Januari", 2: "Februari", 3: "Maret", 4: "April", 5: "Mei", 6: "Juni",
+            7: "Juli", 8: "Agustus", 9: "September", 10: "Oktober", 11: "November", 12: "Desember"
+        }
+
+        bulan_di_data = df[df["Created Date"].dt.year == selected_year]["Created Date"].dt.month.unique()
+        bulan_tersedia = [b for b in bulan_opsi if b in bulan_di_data]
+
+        selected_months = st.multiselect(
+            "📅 Pilih Bulan (Bisa lebih dari 1)",
+            options=bulan_tersedia,
+            default=bulan_tersedia,
+            format_func=lambda x: bulan_opsi[x]
+        )
+
+# Ambil rentang tanggal jika mode harian
 if filter_type == "Per Hari":
-    if isinstance(date_range, tuple) and len(date_range) == 2:
-        start_date = pd.to_datetime(date_range[0])
-        end_date = pd.to_datetime(date_range[1]) + pd.Timedelta(days=1)
-    else:
-        st.warning("⚠️ Silakan pilih rentang tanggal yang lengkap (mulai dan akhir).")
-        st.stop()
-else:
+    tanggal_awal, tanggal_akhir = st.date_input(
+        "Pilih Rentang Tanggal",
+        value=[df["Created Date"].min(), df["Created Date"].max()]
+    )
+
+# ========================
+# Filter data utama berdasarkan filter_type
+# ========================
+start_date, end_date = None, None
+
+if filter_type == "Per Hari":
+    tanggal_awal, tanggal_akhir = date_range
+    start_date = pd.to_datetime(tanggal_awal)
+    end_date = pd.to_datetime(tanggal_akhir)
+
+elif filter_type == "Per Bulan":
     start_date = pd.to_datetime(f"{selected_year}-{selected_month:02d}-01")
     end_date = start_date + pd.DateOffset(months=1)
 
-filtered_df = df[(df["Created Date"] >= start_date) & (df["Created Date"] < end_date)]
+elif filter_type == "Per Tahun":
+    if selected_months:
+        start_date = pd.to_datetime(f"{selected_year}-{min(selected_months):02d}-01")
+        end_date = pd.to_datetime(f"{selected_year}-{max(selected_months):02d}-01") + pd.offsets.MonthEnd(1)
+    else:
+        st.warning("⚠️ Silakan pilih minimal 1 bulan untuk filter per tahun.")
+        st.stop()
+else:
+    st.warning("⚠️ Mode filter tidak dikenali.")
+    st.stop()
 
-if service_filter != "All":
-    filtered_df = filtered_df[filtered_df["Services"] == service_filter]
+# ========================
+# Filter data sesuai rentang tanggal
+# ========================
+if start_date and end_date:
+    start_date = pd.to_datetime(start_date)
+    end_date = pd.to_datetime(end_date)
+    filtered_df = df[(df["Created Date"] >= start_date) & (df["Created Date"] < end_date)]
+else:
+    st.warning("⚠️ Gagal menentukan rentang tanggal.")
+    st.stop()
+
 
 # ==================================
 # 🧾 Tampilan Ringkasan & Analisis
@@ -215,16 +258,25 @@ else:
 # ==================================
 # 📊 Tampilan Grafik Interaktif (khusus Services = All)
 # ==================================
-if service_filter == "All":
     st.markdown("---")
     st.subheader("📈 Grafik Analisis Berdasarkan Pilihan")
 
     tab_grafik = st.tabs(["📊 Grafik Berdasarkan Tags", "🏢 Grafik Berdasarkan Company"])
 
     with tab_grafik[0]:
-        all_tags = filtered_df["Tags"].dropna().unique().tolist()
 
-        # Simpan pilihan sebelumnya di session state
+        if service_filter != "All":
+            filtered_df = filtered_df[filtered_df["Services"] == service_filter]
+
+        all_tags = (
+            filtered_df["Tags"]
+            .dropna()
+            .value_counts()
+            .sort_values(ascending=False)
+            .index
+            .tolist()
+        )
+
         if "selected_tag" not in st.session_state:
             st.session_state.selected_tag = all_tags[0] if all_tags else None
 
@@ -235,38 +287,61 @@ if service_filter == "All":
             "Pilih Tag...",
             options=all_tags,
             index=all_tags.index(st.session_state.selected_tag) if st.session_state.selected_tag in all_tags else 0,
-            key="selected_tag")
+            key="selected_tag"
+        )
 
         df_tag = filtered_df[filtered_df["Tags"] == selected_tag].copy()
-        df_tag["Tanggal"] = df_tag["Created Date"].dt.date
+
+        # Tentukan format Tanggal berdasarkan filter_type
+        if filter_type == "Per Tahun":
+            df_tag["Tanggal"] = df_tag["Created Date"].dt.month
+            df_tag["Tanggal"] = df_tag["Tanggal"].map(lambda x: bulan_opsi.get(x, str(x)))
+            x_type = 'nominal'
+        elif filter_type == "Per Bulan":
+            df_tag["Tanggal"] = df_tag["Created Date"].dt.day
+            x_type = 'ordinal'
+        else:
+            df_tag["Tanggal"] = df_tag["Created Date"]
+            x_type = 'temporal'
+
         tag_summary = df_tag.groupby("Tanggal").size().reset_index(name="Jumlah Tiket")
 
         if tag_summary.empty:
             st.info("Tidak ada data untuk tag ini pada periode yang dipilih.")
         else:
             chart = alt.Chart(tag_summary).mark_line(point=True).encode(
-                x='Tanggal:T',
-                y='Jumlah Tiket:Q'
+                x=alt.X("Tanggal", type=x_type),
+                y="Jumlah Tiket:Q"
             ) + alt.Chart(tag_summary).mark_text(
                 align='center',
                 baseline='bottom',
-                dy=-5  # geser ke atas
+                dy=-10
             ).encode(
-                x='Tanggal:T',
-                y='Jumlah Tiket:Q',
-                text='Jumlah Tiket:Q'
+                x=alt.X("Tanggal", type=x_type),
+                y="Jumlah Tiket:Q",
+                text="Jumlah Tiket:Q"
             )
 
             st.altair_chart(chart, use_container_width=True)
 
     with tab_grafik[1]:
-        all_companies = filtered_df["Company"].dropna().unique().tolist()
 
-        # Simpan state pilihan sebelumnya
+        if service_filter != "All":
+            filtered_df = filtered_df[filtered_df["Services"] == service_filter]
+
+        all_companies = (
+            filtered_df["Company"]
+            .dropna()
+            .value_counts()
+            .sort_values(ascending=False)
+            .index
+            .tolist()
+        )
+
+
         if "selected_company" not in st.session_state:
             st.session_state.selected_company = all_companies[0] if all_companies else None
 
-        # Hanya ubah jika tidak ada di daftar
         if st.session_state.selected_company not in all_companies:
             st.session_state.selected_company = all_companies[0] if all_companies else None
 
@@ -274,26 +349,39 @@ if service_filter == "All":
             "Pilih Company...",
             options=all_companies,
             index=all_companies.index(st.session_state.selected_company) if st.session_state.selected_company in all_companies else 0,
-            key="selected_company")
+            key="selected_company"
+        )
 
         df_comp = filtered_df[filtered_df["Company"] == selected_company].copy()
-        df_comp["Tanggal"] = df_comp["Created Date"].dt.date
+
+        # Format kolom Tanggal berdasarkan filter_type
+        if filter_type == "Per Tahun":
+            df_comp["Tanggal"] = df_comp["Created Date"].dt.month
+            df_comp["Tanggal"] = df_comp["Tanggal"].map(lambda x: bulan_opsi.get(x, str(x)))
+            x_type = 'nominal'
+        elif filter_type == "Per Bulan":
+            df_comp["Tanggal"] = df_comp["Created Date"].dt.day
+            x_type = 'ordinal'
+        else:
+            df_comp["Tanggal"] = df_comp["Created Date"]
+            x_type = 'temporal'
+
         comp_summary = df_comp.groupby("Tanggal").size().reset_index(name="Jumlah Tiket")
 
         if comp_summary.empty:
             st.info("Tidak ada data untuk company ini pada periode yang dipilih.")
         else:
             chart = alt.Chart(comp_summary).mark_line(point=True).encode(
-                x='Tanggal:T',
-                y='Jumlah Tiket:Q'
+                x=alt.X("Tanggal", type=x_type),
+                y="Jumlah Tiket:Q"
             ) + alt.Chart(comp_summary).mark_text(
                 align='center',
                 baseline='bottom',
-                dy=-5  # geser ke atas
+                dy=-10
             ).encode(
-                x='Tanggal:T',
-                y='Jumlah Tiket:Q',
-                text='Jumlah Tiket:Q'
+                x=alt.X("Tanggal", type=x_type),
+                y="Jumlah Tiket:Q",
+                text="Jumlah Tiket:Q"
             )
 
             st.altair_chart(chart, use_container_width=True)
