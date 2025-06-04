@@ -295,34 +295,59 @@ else:
         # Tentukan format Tanggal berdasarkan filter_type
         if filter_type == "Per Tahun":
             df_tag["Tanggal"] = df_tag["Created Date"].dt.month
+            df_tag = df_tag[df_tag["Tanggal"].isin(selected_months)]  # filter hanya bulan yang dipilih
             df_tag["Tanggal"] = df_tag["Tanggal"].map(lambda x: bulan_opsi.get(x, str(x)))
             x_type = 'nominal'
-        elif filter_type == "Per Bulan":
-            df_tag["Tanggal"] = df_tag["Created Date"].dt.day
-            x_type = 'ordinal'
-        else:
-            df_tag["Tanggal"] = df_tag["Created Date"]
-            x_type = 'temporal'
 
-        tag_summary = df_tag.groupby("Tanggal").size().reset_index(name="Jumlah Tiket")
+            bulan_terpilih = [bulan_opsi[m] for m in selected_months if m in bulan_opsi]
+            tag_summary = df_tag.groupby("Tanggal").size().reindex(bulan_terpilih, fill_value=0).reset_index(name="Jumlah Tiket")
 
-        if tag_summary.empty:
-            st.info("Tidak ada data untuk tag ini pada periode yang dipilih.")
-        else:
+            x_axis = alt.X("Tanggal", type='nominal', sort=bulan_terpilih)
+
+
             chart = alt.Chart(tag_summary).mark_line(point=True).encode(
-                x=alt.X("Tanggal", type=x_type),
+                x=x_axis,
                 y="Jumlah Tiket:Q"
             ) + alt.Chart(tag_summary).mark_text(
                 align='center',
                 baseline='bottom',
                 dy=-10
             ).encode(
-                x=alt.X("Tanggal", type=x_type),
+                x=x_axis,
                 y="Jumlah Tiket:Q",
                 text="Jumlah Tiket:Q"
             )
 
             st.altair_chart(chart, use_container_width=True)
+
+        else:
+            # Untuk Per Bulan & Per Hari
+            if filter_type == "Per Bulan":
+                df_tag["Tanggal"] = df_tag["Created Date"].dt.day
+                x_type = 'ordinal'
+            else:
+                df_tag["Tanggal"] = df_tag["Created Date"]
+                x_type = 'temporal'
+
+            tag_summary = df_tag.groupby("Tanggal").size().reset_index(name="Jumlah Tiket")
+
+            if tag_summary.empty:
+                st.info("Tidak ada data untuk tag ini pada periode yang dipilih.")
+            else:
+                chart = alt.Chart(tag_summary).mark_line(point=True).encode(
+                    x=alt.X("Tanggal", type=x_type),
+                    y="Jumlah Tiket:Q"
+                ) + alt.Chart(tag_summary).mark_text(
+                    align='center',
+                    baseline='bottom',
+                    dy=-10
+                ).encode(
+                    x=alt.X("Tanggal", type=x_type),
+                    y="Jumlah Tiket:Q",
+                    text="Jumlah Tiket:Q"
+                )
+
+                st.altair_chart(chart, use_container_width=True)
 
     with tab_grafik[1]:
 
@@ -355,31 +380,41 @@ else:
         df_comp = filtered_df[filtered_df["Company"] == selected_company].copy()
 
         # Format kolom Tanggal berdasarkan filter_type
+        # Format kolom Tanggal berdasarkan filter_type
         if filter_type == "Per Tahun":
             df_comp["Tanggal"] = df_comp["Created Date"].dt.month
+            df_comp = df_comp[df_comp["Tanggal"].isin(selected_months)]
             df_comp["Tanggal"] = df_comp["Tanggal"].map(lambda x: bulan_opsi.get(x, str(x)))
             x_type = 'nominal'
+
+            bulan_terpilih = [bulan_opsi[m] for m in selected_months if m in bulan_opsi]
+            comp_summary = df_comp.groupby("Tanggal").size().reindex(bulan_terpilih, fill_value=0).reset_index(name="Jumlah Tiket")
+
+            x_axis = alt.X("Tanggal", type='nominal', sort=bulan_terpilih)
+
         elif filter_type == "Per Bulan":
             df_comp["Tanggal"] = df_comp["Created Date"].dt.day
-            x_type = 'ordinal'
-        else:
+            comp_summary = df_comp.groupby("Tanggal").size().reset_index(name="Jumlah Tiket")
+            x_axis = alt.X("Tanggal", type='ordinal')
+
+        else:  # Per Hari
             df_comp["Tanggal"] = df_comp["Created Date"]
-            x_type = 'temporal'
+            comp_summary = df_comp.groupby("Tanggal").size().reset_index(name="Jumlah Tiket")
+            x_axis = alt.X("Tanggal", type='temporal')
 
-        comp_summary = df_comp.groupby("Tanggal").size().reset_index(name="Jumlah Tiket")
-
+        # Render chart
         if comp_summary.empty:
             st.info("Tidak ada data untuk company ini pada periode yang dipilih.")
         else:
             chart = alt.Chart(comp_summary).mark_line(point=True).encode(
-                x=alt.X("Tanggal", type=x_type),
+                x=x_axis,
                 y="Jumlah Tiket:Q"
             ) + alt.Chart(comp_summary).mark_text(
                 align='center',
                 baseline='bottom',
                 dy=-10
             ).encode(
-                x=alt.X("Tanggal", type=x_type),
+                x=x_axis,
                 y="Jumlah Tiket:Q",
                 text="Jumlah Tiket:Q"
             )
