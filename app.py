@@ -207,8 +207,10 @@ else:
             index=company_list.index(st.session_state.selected_specific_company) if st.session_state.selected_specific_company in company_list else 0,
             key="selected_specific_company"
         )
-
         tag_data = filtered_df[filtered_df["Company"] == selected_company]
+        # Simpan state agar grafik dan tabel ikut menyesuaikan
+        filtered_df = filtered_df[filtered_df["Company"] == selected_company]
+
     else:
         tag_data = filtered_df.copy()
 
@@ -226,20 +228,17 @@ else:
                 tag_items = list(tag_counts.items())[:10]
             elif tag_limit_option == "Top 20":
                 tag_items = list(tag_counts.items())[:20]
-            else:  # All Tags
+            else:
                 tag_items = list(tag_counts.items())
 
-            cols = st.columns(4)  # buat 4 kolom
+            st.session_state.current_tag_items = tag_items
 
-            # Bagi tag_items ke dalam 4 kolom secara vertikal
-            import math
-
-            n_cols = 4  # Jumlah kolom yang diinginkan
+            # Tampilkan tag_items
+            n_cols = 4
             cols = st.columns(n_cols)
             n_items = len(tag_items)
             n_rows = math.ceil(n_items / n_cols)
 
-            # Susun vertikal ke bawah per kolom (bukan menyamping)
             for row_idx in range(n_rows):
                 for col_idx in range(n_cols):
                     idx = row_idx + col_idx * n_rows
@@ -248,8 +247,10 @@ else:
                         with cols[col_idx]:
                             st.write(f"{idx + 1}. {tag} ({count} tiket)")
         else:
+            st.session_state.current_tag_items = []
             st.info(f"Tidak ada data Tags yang valid untuk service **{service_filter}**.")
     else:
+        st.session_state.current_tag_items = []
         st.info(f"Tidak ditemukan kolom Tags atau seluruh nilainya kosong untuk service **{service_filter}**.")
 
 st.markdown("---")
@@ -264,13 +265,20 @@ if service_filter !="All":
     detail_df = filtered_df.copy()
 
     if filter_mode == "Filter berdasarkan Tag":
-        available_tags = (
-            filtered_df["Tags"]
-            .dropna()
-            .value_counts()
-            .sort_values(ascending=False)
-            .index.tolist()
-        )
+        tag_items_from_session = st.session_state.get("current_tag_items", [])
+
+        # Ambil hanya nama tag dari hasil top N
+        available_tags = [tag for tag, _ in tag_items_from_session]
+
+        # Jika list kosong, fallback ke semua tags agar tidak error
+        if not available_tags:
+            available_tags = (
+                filtered_df["Tags"]
+                .dropna()
+                .value_counts()
+                .sort_values(ascending=False)
+                .index.tolist()
+            )
 
         selected_tag = st.selectbox("Pilih Tag:", options=available_tags)
         detail_df = detail_df[detail_df["Tags"] == selected_tag]
