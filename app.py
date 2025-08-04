@@ -18,7 +18,7 @@ if st.button("🔄 Refresh Data dari Google Sheet"):
 # ==================================
 @st.cache_data
 def load_data():
-    url = "https://docs.google.com/spreadsheets/d/1gzds45lEjsxycC1h_Wji6Cvq-TamQsx-J5rjXaT1rS0/gviz/tq?tqx=out:csv&gid=1011489990"
+    url = "https://docs.google.com/spreadsheets/d/1gzds45lEjsxycC1h_Wji6Cvq-TamQsx-J5rjXaT1rS0/gviz/tq?tqx=out:csv&gid=621532558"
     df = pd.read_csv(url)
     df["Created Date"] = pd.to_datetime(df["Created Date"], errors='coerce', dayfirst=True)
     df["Finish Date"] = pd.to_datetime(df["Finish Date"], errors='coerce', dayfirst=True)
