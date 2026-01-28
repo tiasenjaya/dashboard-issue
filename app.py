@@ -3,8 +3,25 @@ import pandas as pd
 import altair as alt
 import datetime
 import math
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
 
 st.set_page_config(page_title="Dashboard Detail Tiket", layout="wide")
+
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+
+def _get_sheet_title_by_gid(service, spreadsheet_id: str, sheet_gid: int) -> str:
+    meta = service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id,
+        fields="sheets(properties(sheetId,title))",
+    ).execute()
+
+    for s in meta.get("sheets", []):
+        props = s.get("properties", {})
+        if int(props.get("sheetId", -1)) == int(sheet_gid):
+            return props.get("title")
+
+    raise ValueError(f"GID sheet {sheet_gid} tidak ditemukan di spreadsheet {spreadsheet_id}")
 
 # ==================================
 # 🔄 Refresh data manual
@@ -18,10 +35,50 @@ if st.button("🔄 Refresh Data dari Google Sheet"):
 # ==================================
 @st.cache_data
 def load_data():
-    url = "https://docs.google.com/spreadsheets/d/1gzds45lEjsxycC1h_Wji6Cvq-TamQsx-J5rjXaT1rS0/gviz/tq?tqx=out:csv&gid=621532558"
-    df = pd.read_csv(url)
-    df["Created Date"] = pd.to_datetime(df["Created Date"], errors='coerce', dayfirst=True)
-    df["Finish Date"] = pd.to_datetime(df["Finish Date"], errors='coerce', dayfirst=True)
+    # ambil dari Streamlit Secrets
+    spreadsheet_id = st.secrets["SPREADSHEET_ID"]
+    sheet_gid = int(st.secrets["SHEET_GID"])
+
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=SCOPES,
+    )
+    service = build("sheets", "v4", credentials=creds, cache_discovery=False)
+
+    sheet_title = _get_sheet_title_by_gid(service, spreadsheet_id, sheet_gid)
+
+    values = (
+        service.spreadsheets()
+        .values()
+        .get(spreadsheetId=spreadsheet_id, range=sheet_title)
+        .execute()
+        .get("values", [])
+    )
+
+    if not values:
+        return pd.DataFrame()
+
+    header = [h.strip() for h in values[0]]
+    rows = values[1:]
+
+    # rapihin panjang kolom biar konsisten
+    max_len = len(header)
+    fixed_rows = []
+    for r in rows:
+        r = r[:max_len] + [""] * max(0, max_len - len(r))
+        fixed_rows.append(r)
+
+    df = pd.DataFrame(fixed_rows, columns=header)
+
+    # buang baris kosong (Sheets API sering ngasih empty string)
+    df = df.replace({"": None}).dropna(how="all")
+
+    # parse tanggal kalau kolomnya ada
+    if "Created Date" in df.columns:
+        df["Created Date"] = pd.to_datetime(df["Created Date"], errors="coerce", dayfirst=True)
+    if "Finish Date" in df.columns:
+        df["Finish Date"] = pd.to_datetime(df["Finish Date"], errors="coerce", dayfirst=True)
+
     return df
 
 df = load_data()
